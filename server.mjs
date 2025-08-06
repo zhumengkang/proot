@@ -6,22 +6,26 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import configLoader from './config/config-loader.mjs'; // 导入主配置
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// 从主配置获取配置
+const proxyConfig = configLoader.getProxyConfig();
+const authConfig = configLoader.getAuthConfig();
+
 const config = {
   port: process.env.PORT || 8080,
-  password: process.env.PASSWORD || '',
-  adminpassword: process.env.ADMINPASSWORD || '',
+  password: authConfig.password,
   corsOrigin: process.env.CORS_ORIGIN || '*',
-  timeout: parseInt(process.env.REQUEST_TIMEOUT || '5000'),
+  timeout: proxyConfig.timeout,
   maxRetries: parseInt(process.env.MAX_RETRIES || '2'),
   cacheMaxAge: process.env.CACHE_MAX_AGE || '1d',
-  userAgent: process.env.USER_AGENT || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-  debug: process.env.DEBUG === 'true'
+  userAgent: proxyConfig.userAgents[0], // 使用第一个User Agent
+  debug: proxyConfig.debug
 };
 
 const log = (...args) => {
@@ -58,12 +62,9 @@ async function renderPage(filePath, password) {
   if (password !== '') {
     const sha256 = await sha256Hash(password);
     content = content.replace('{{PASSWORD}}', sha256);
+  } else {
+    content = content.replace('{{PASSWORD}}', '');
   }
-  // 添加ADMINPASSWORD注入
-  if (config.adminpassword !== '') {
-      const adminSha256 = await sha256Hash(config.adminpassword);
-      content = content.replace('{{ADMINPASSWORD}}', adminSha256);
-  } 
   return content;
 }
 
@@ -122,16 +123,50 @@ function isValidUrl(urlString) {
   }
 }
 
-// 修复反向代理处理过的路径
-app.use('/proxy', (req, res, next) => {
-  const targetUrl = req.url.replace(/^\//, '').replace(/(https?:)\/([^/])/, '$1//$2');
-  req.url = '/' + encodeURIComponent(targetUrl);
-  next();
-});
+// 验证代理请求的鉴权
+function validateProxyAuth(req) {
+  const authHash = req.query.auth;
+  const timestamp = req.query.t;
+  
+  // 获取服务器端密码哈希
+  const serverPassword = config.password;
+  if (!serverPassword) {
+    console.error('服务器未设置 PASSWORD 环境变量，代理访问被拒绝');
+    return false;
+  }
+  
+  // 使用 crypto 模块计算 SHA-256 哈希
+  const serverPasswordHash = crypto.createHash('sha256').update(serverPassword).digest('hex');
+  
+  if (!authHash || authHash !== serverPasswordHash) {
+    console.warn('代理请求鉴权失败：密码哈希不匹配');
+    console.warn(`期望: ${serverPasswordHash}, 收到: ${authHash}`);
+    return false;
+  }
+  
+  // 验证时间戳（10分钟有效期）
+  if (timestamp) {
+    const now = Date.now();
+    const maxAge = 10 * 60 * 1000; // 10分钟
+    if (now - parseInt(timestamp) > maxAge) {
+      console.warn('代理请求鉴权失败：时间戳过期');
+      return false;
+    }
+  }
+  
+  return true;
+}
 
-// 代理路由
 app.get('/proxy/:encodedUrl', async (req, res) => {
   try {
+    // 验证鉴权
+    if (!validateProxyAuth(req)) {
+      return res.status(401).json({
+        success: false,
+        error: '代理访问未授权：请检查密码配置或鉴权参数'
+      });
+    }
+
     const encodedUrl = req.params.encodedUrl;
     const targetUrl = decodeURIComponent(encodedUrl);
 
@@ -210,12 +245,11 @@ app.listen(config.port, () => {
   console.log(`服务器运行在 http://localhost:${config.port}`);
   if (config.password !== '') {
     console.log('用户登录密码已设置');
-  }
-  if (config.adminpassword !== '') {
-    console.log('管理员登录密码已设置');
+  } else {
+    console.log('警告: 未设置 PASSWORD 环境变量，用户将被要求设置密码');
   }
   if (config.debug) {
     console.log('调试模式已启用');
-    console.log('配置:', { ...config, password: config.password ? '******' : '', adminpassword: config.adminpassword? '******' : '' });
+    console.log('配置:', { ...config, password: config.password ? '******' : '' });
   }
 });

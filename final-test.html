@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>最终密码系统测试</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; }
+        .test-result { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        .code { background-color: #f8f9fa; padding: 10px; border-radius: 3px; font-family: monospace; white-space: pre-wrap; }
+        button { background-color: #007bff; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin: 5px; }
+        button:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>🚀 最终密码系统测试</h1>
+    
+    <div id="loadingStatus" class="info">正在加载配置...</div>
+    <div id="results"></div>
+    
+    <button onclick="runDetailedTests()">运行详细测试</button>
+    <button onclick="testPasswordVerification()">测试密码验证</button>
+    
+    <!-- 关键：按正确顺序加载脚本 -->
+    <script src="config/master-config.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/password.js"></script>
+
+    <script>
+        // 等待配置完全加载
+        async function waitForConfig() {
+            let attempts = 0;
+            while ((!window.MASTER_CONFIG || !window.MASTER_CONFIG_READY) && attempts < 100) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                attempts++;
+            }
+            return window.MASTER_CONFIG && window.MASTER_CONFIG_READY;
+        }
+        
+        async function checkLoadingStatus() {
+            const status = document.getElementById('loadingStatus');
+            
+            if (window.MASTER_CONFIG) {
+                if (window.MASTER_CONFIG_READY) {
+                    status.innerHTML = '✅ 主配置已加载并初始化完成';
+                    status.className = 'success';
+                    runQuickTests();
+                } else {
+                    status.innerHTML = '⏳ 主配置已加载，等待初始化完成...';
+                    status.className = 'warning';
+                    setTimeout(checkLoadingStatus, 500);
+                }
+            } else {
+                status.innerHTML = '❌ 主配置未加载';
+                status.className = 'error';
+                setTimeout(checkLoadingStatus, 500);
+            }
+        }
+        
+        async function runQuickTests() {
+            const results = document.getElementById('results');
+            const tests = [];
+            
+            try {
+                // 快速检查
+                tests.push(`✅ 主配置存在: ${!!window.MASTER_CONFIG}`);
+                tests.push(`✅ 主配置就绪: ${!!window.MASTER_CONFIG_READY}`);
+                tests.push(`✅ AUTH_CONFIG存在: ${!!window.AUTH_CONFIG}`);
+                tests.push(`✅ 密码设置: ${window.AUTH_CONFIG?.password || '未设置'}`);
+                tests.push(`✅ 启用状态: ${window.AUTH_CONFIG?.enabled}`);
+                
+                // 关键函数检查
+                const isProtected = window.isPasswordProtected ? window.isPasswordProtected() : 'undefined';
+                tests.push(`${isProtected ? '✅' : '❌'} isPasswordProtected: ${isProtected}`);
+                
+                const isRequired = window.isPasswordRequired ? window.isPasswordRequired() : 'undefined';
+                tests.push(`${!isRequired ? '✅' : '❌'} isPasswordRequired: ${isRequired}`);
+                
+                // 检查哈希
+                if (typeof window.getPasswordHash === 'function') {
+                    const hash = await window.getPasswordHash();
+                    tests.push(`${hash ? '✅' : '❌'} 密码哈希: ${hash ? hash.substring(0, 16) + '...' : '未生成'}`);
+                }
+                
+            } catch (error) {
+                tests.push(`❌ 测试出错: ${error.message}`);
+            }
+            
+            results.innerHTML = `
+                <div class="test-result ${tests.some(t => t.includes('❌')) ? 'warning' : 'success'}">
+                    <h3>📊 快速检查结果</h3>
+                    <div class="code">${tests.join('\n')}</div>
+                </div>
+            `;
+        }
+        
+        async function runDetailedTests() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<div class="info">正在运行详细测试...</div>';
+            
+            const configReady = await waitForConfig();
+            
+            if (!configReady) {
+                results.innerHTML = '<div class="error">❌ 配置加载超时，无法进行测试</div>';
+                return;
+            }
+            
+            const tests = [
+                '=== 配置检查 ===',
+                `主配置对象: ${JSON.stringify(window.MASTER_CONFIG, null, 2)}`,
+                '',
+                '=== AUTH_CONFIG检查 ===',
+                `username: ${window.AUTH_CONFIG?.username}`,
+                `password: ${window.AUTH_CONFIG?.password}`,
+                `enabled: ${window.AUTH_CONFIG?.enabled}`,
+                `passwordHash: ${window.AUTH_CONFIG?.passwordHash ? window.AUTH_CONFIG.passwordHash.substring(0, 16) + '...' : '未设置'}`,
+                '',
+                '=== 函数检查 ===',
+            ];
+            
+            try {
+                const isProtected = window.isPasswordProtected();
+                tests.push(`isPasswordProtected(): ${isProtected}`);
+                
+                const isRequired = window.isPasswordRequired();
+                tests.push(`isPasswordRequired(): ${isRequired}`);
+                
+                if (typeof window.getPasswordHash === 'function') {
+                    const hash = await window.getPasswordHash();
+                    tests.push(`getPasswordHash(): ${hash}`);
+                }
+                
+            } catch (error) {
+                tests.push(`❌ 函数测试失败: ${error.message}`);
+            }
+            
+            results.innerHTML = `
+                <div class="test-result info">
+                    <h3>🔍 详细测试结果</h3>
+                    <div class="code">${tests.join('\n')}</div>
+                </div>
+            `;
+        }
+        
+        async function testPasswordVerification() {
+            const results = document.getElementById('results');
+            
+            try {
+                results.innerHTML = '<div class="info">正在测试密码验证...</div>';
+                
+                if (typeof window.verifyPassword === 'function') {
+                    const testPassword = '123qwe!@#QWE';
+                    const isValid = await window.verifyPassword(testPassword);
+                    
+                    const result = isValid ? 
+                        `✅ 密码验证成功！密码 "${testPassword}" 验证通过` :
+                        `❌ 密码验证失败！密码 "${testPassword}" 验证未通过`;
+                    
+                    results.innerHTML = `
+                        <div class="test-result ${isValid ? 'success' : 'error'}">
+                            <h3>🔐 密码验证结果</h3>
+                            <div>${result}</div>
+                        </div>
+                    `;
+                } else {
+                    results.innerHTML = '<div class="error">❌ verifyPassword 函数不存在</div>';
+                }
+            } catch (error) {
+                results.innerHTML = `<div class="error">❌ 密码验证出错: ${error.message}</div>`;
+            }
+        }
+        
+        // 页面加载后开始检查
+        setTimeout(checkLoadingStatus, 100);
+    </script>
+</body>
+</html>

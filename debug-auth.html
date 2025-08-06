@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreTV 认证调试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .debug-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .success { background-color: #d4edda; border-color: #c3e6cb; }
+        .error { background-color: #f8d7da; border-color: #f5c6cb; }
+        .warning { background-color: #fff3cd; border-color: #ffeaa7; }
+        .info { background-color: #d1ecf1; border-color: #bee5eb; }
+        .code {
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            font-family: monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        input { padding: 10px; border: 1px solid #ccc; border-radius: 5px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 LibreTV 认证调试工具</h1>
+        
+        <div id="masterConfigCheck" class="debug-section">
+            <h3>1. 主配置检查</h3>
+            <div id="masterConfigResult">检查中...</div>
+        </div>
+        
+        <div id="authConfigCheck" class="debug-section">
+            <h3>2. 认证配置检查</h3>
+            <div id="authConfigResult">检查中...</div>
+        </div>
+        
+        <div id="hashCheck" class="debug-section">
+            <h3>3. 密码哈希检查</h3>
+            <div id="hashResult">检查中...</div>
+        </div>
+        
+        <div id="passwordTest" class="debug-section">
+            <h3>4. 密码验证测试</h3>
+            <input type="password" id="testPassword" placeholder="输入密码: 123qwe!@#QWE" value="123qwe!@#QWE">
+            <button onclick="testPassword()">测试密码</button>
+            <div id="passwordTestResult"></div>
+        </div>
+        
+        <div id="hashGeneration" class="debug-section">
+            <h3>5. 哈希生成测试</h3>
+            <input type="text" id="hashTestInput" placeholder="输入要哈希的文本" value="123qwe!@#QWE">
+            <button onclick="generateTestHash()">生成哈希</button>
+            <div id="hashGenerationResult"></div>
+        </div>
+        
+        <div id="manualFix" class="debug-section">
+            <h3>6. 重新计算哈希</h3>
+            <button onclick="recalculateHash()">重新计算密码哈希</button>
+            <div id="manualFixResult"></div>
+        </div>
+        
+        <div id="realTimeTest" class="debug-section">
+            <h3>7. 实时验证测试</h3>
+            <button onclick="startRealTimeTest()">开始实时测试</button>
+            <div id="realTimeResult"></div>
+        </div>
+    </div>
+
+    <!-- 引入必要的脚本 -->
+    <script src="config/master-config.js"></script>
+    <script src="js/auth-config.js"></script>
+    <script src="js/sha256.js"></script>
+    <script src="js/password.js"></script>
+
+    <script>
+        // 等待所有脚本加载完成
+        setTimeout(checkAll, 1000);
+        
+        function checkAll() {
+            checkMasterConfig();
+            checkAuthConfig();
+            checkPasswordHash();
+        }
+        
+        function checkMasterConfig() {
+            const result = document.getElementById('masterConfigResult');
+            
+            if (typeof window.MASTER_CONFIG !== 'undefined') {
+                const config = window.MASTER_CONFIG;
+                result.innerHTML = `
+                    <div class="success">✅ 主配置已加载</div>
+                    <div class="code">
+用户名: ${config.auth?.username}
+密码: ${config.auth?.password}
+密码哈希: ${config.auth?.passwordHash || '未生成'}
+启用状态: ${config.auth?.enabled}
+                    </div>
+                `;
+                result.className = 'success';
+            } else {
+                result.innerHTML = '<div class="error">❌ 主配置未加载</div>';
+                result.className = 'error';
+            }
+        }
+        
+        function checkAuthConfig() {
+            const result = document.getElementById('authConfigResult');
+            
+            if (typeof window.AUTH_CONFIG !== 'undefined') {
+                const config = window.AUTH_CONFIG;
+                result.innerHTML = `
+                    <div class="success">✅ 认证配置已加载</div>
+                    <div class="code">
+用户名: ${config.username}
+密码: ${config.password}
+密码哈希: ${config.passwordHash || '未生成'}
+启用状态: ${config.enabled}
+                    </div>
+                `;
+                result.className = 'success';
+            } else {
+                result.innerHTML = '<div class="error">❌ 认证配置未加载</div>';
+                result.className = 'error';
+            }
+        }
+        
+        async function checkPasswordHash() {
+            const result = document.getElementById('hashResult');
+            
+            try {
+                let hash = null;
+                
+                if (typeof window.getPasswordHash === 'function') {
+                    hash = await window.getPasswordHash();
+                }
+                
+                if (hash) {
+                    result.innerHTML = `
+                        <div class="success">✅ 密码哈希已生成</div>
+                        <div class="code">哈希值: ${hash}</div>
+                    `;
+                    result.className = 'success';
+                } else {
+                    result.innerHTML = '<div class="error">❌ 密码哈希未生成</div>';
+                    result.className = 'error';
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ 获取密码哈希失败: ${error.message}</div>`;
+                result.className = 'error';
+            }
+        }
+        
+        async function testPassword() {
+            const password = document.getElementById('testPassword').value;
+            const result = document.getElementById('passwordTestResult');
+            
+            if (!password) {
+                result.innerHTML = '<div class="warning">⚠️ 请输入密码</div>';
+                return;
+            }
+            
+            try {
+                if (typeof window.verifyPassword === 'function') {
+                    const isValid = await window.verifyPassword(password);
+                    if (isValid) {
+                        result.innerHTML = '<div class="success">✅ 密码验证成功！</div>';
+                    } else {
+                        result.innerHTML = '<div class="error">❌ 密码验证失败</div>';
+                    }
+                } else {
+                    result.innerHTML = '<div class="error">❌ verifyPassword 函数不存在</div>';
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ 验证出错: ${error.message}</div>`;
+            }
+        }
+        
+        async function generateTestHash() {
+            const input = document.getElementById('hashTestInput').value;
+            const result = document.getElementById('hashGenerationResult');
+            
+            if (!input) {
+                result.innerHTML = '<div class="warning">⚠️ 请输入要哈希的文本</div>';
+                return;
+            }
+            
+            try {
+                let hash = null;
+                
+                // 尝试使用多种方法生成哈希
+                if (typeof window.generatePasswordHash === 'function') {
+                    hash = await window.generatePasswordHash(input);
+                } else if (typeof sha256 === 'function') {
+                    hash = await sha256(input);
+                } else if (window.crypto && crypto.subtle) {
+                    const encoder = new TextEncoder();
+                    const data = encoder.encode(input);
+                    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+                    const hashArray = Array.from(new Uint8Array(hashBuffer));
+                    hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+                }
+                
+                if (hash) {
+                    result.innerHTML = `
+                        <div class="success">✅ 哈希生成成功</div>
+                        <div class="code">输入: ${input}
+哈希: ${hash}</div>
+                    `;
+                } else {
+                    result.innerHTML = '<div class="error">❌ 无法生成哈希</div>';
+                }
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ 生成哈希失败: ${error.message}</div>`;
+            }
+        }
+        
+        async function recalculateHash() {
+            const result = document.getElementById('manualFixResult');
+            
+            try {
+                if (!window.MASTER_CONFIG) {
+                    result.innerHTML = '<div class="error">❌ 主配置未加载</div>';
+                    return;
+                }
+                
+                const password = window.MASTER_CONFIG.auth.password;
+                if (!password) {
+                    result.innerHTML = '<div class="error">❌ 主配置中没有密码</div>';
+                    return;
+                }
+                
+                result.innerHTML = '<div class="info">⏳ 正在重新计算密码哈希...</div>';
+                
+                // 清除现有哈希
+                window.MASTER_CONFIG.auth.passwordHash = null;
+                
+                // 重新计算
+                if (typeof window.generatePasswordHash === 'function') {
+                    const hash = await window.generatePasswordHash(password);
+                    window.MASTER_CONFIG.auth.passwordHash = hash;
+                    
+                    result.innerHTML = `
+                        <div class="success">✅ 哈希重新计算完成</div>
+                        <div class="code">
+密码: ${password}
+新哈希: ${hash}
+                        </div>
+                        <div class="info">现在可以尝试重新验证密码</div>
+                    `;
+                } else {
+                    throw new Error('generatePasswordHash 函数不可用');
+                }
+                
+                // 重新检查
+                setTimeout(checkAll, 500);
+            } catch (error) {
+                result.innerHTML = `<div class="error">❌ 重新计算失败: ${error.message}</div>`;
+            }
+        }
+        
+        async function startRealTimeTest() {
+            const result = document.getElementById('realTimeResult');
+            
+            result.innerHTML = '<div class="info">⏳ 开始实时测试...</div>';
+            
+            // 测试序列
+            const tests = [
+                '检查主配置是否存在',
+                '检查密码是否设置',
+                '尝试获取密码哈希',
+                '验证密码 "123qwe!@#QWE"',
+                '检查localStorage状态'
+            ];
+            
+            let testResults = [];
+            
+            for (let i = 0; i < tests.length; i++) {
+                const testName = tests[i];
+                let testResult = '';
+                
+                try {
+                    switch (i) {
+                        case 0:
+                            testResult = window.MASTER_CONFIG ? '✅ 存在' : '❌ 不存在';
+                            break;
+                        case 1:
+                            testResult = window.MASTER_CONFIG?.auth?.password ? 
+                                `✅ 已设置: ${window.MASTER_CONFIG.auth.password}` : '❌ 未设置';
+                            break;
+                        case 2:
+                            if (typeof window.getPasswordHash === 'function') {
+                                const hash = await window.getPasswordHash();
+                                testResult = hash ? `✅ 获取成功: ${hash}` : '❌ 获取失败';
+                            } else {
+                                testResult = '❌ getPasswordHash 函数不存在';
+                            }
+                            break;
+                        case 3:
+                            if (typeof window.verifyPassword === 'function') {
+                                const isValid = await window.verifyPassword('123qwe!@#QWE');
+                                testResult = isValid ? '✅ 验证成功' : '❌ 验证失败';
+                            } else {
+                                testResult = '❌ verifyPassword 函数不存在';
+                            }
+                            break;
+                        case 4:
+                            const authData = localStorage.getItem('authSession');
+                            testResult = authData ? `✅ 存在: ${authData.substring(0, 50)}...` : '❌ 不存在';
+                            break;
+                    }
+                } catch (error) {
+                    testResult = `❌ 错误: ${error.message}`;
+                }
+                
+                testResults.push(`${testName}: ${testResult}`);
+                
+                // 实时更新结果
+                result.innerHTML = `
+                    <div class="info">正在执行测试 ${i + 1}/${tests.length}...</div>
+                    <div class="code">${testResults.join('\n')}</div>
+                `;
+                
+                // 等待一点时间
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+            
+            result.innerHTML = `
+                <div class="success">✅ 实时测试完成</div>
+                <div class="code">${testResults.join('\n')}</div>
+            `;
+        }
+    </script>
+</body>
+</html>

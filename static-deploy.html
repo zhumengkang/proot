@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreTV - 静态部署配置</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .code-block {
+            background-color: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            overflow-x: auto;
+            margin: 10px 0;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border-color: #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        .step {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #28a745;
+            margin: 15px 0;
+        }
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            margin: 10px 5px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 LibreTV 静态部署配置</h1>
+        
+        <div class="warning">
+            <strong>⚠️ 重要提示：</strong>现在已经简化为不使用环境变量的静态部署方式，所有配置都在代码文件中直接设置。
+        </div>
+
+        <div class="section">
+            <h2>📋 部署前配置</h2>
+            
+            <div class="step">
+                <h3>🎯 统一配置 - 只需修改一个文件</h3>
+                <p>编辑 <code>config/master-config.js</code> 文件，所有其他文件会自动同步：</p>
+                <div class="code-block">
+const MASTER_CONFIG = {
+    auth: {
+        username: 'admin',                    // 修改用户名
+        password: 'your_secure_password',     // 🔥 只需在这里修改密码
+        enabled: true,
+        // ... 其他配置
+    },
+    proxy: {
+        debug: false,                         // 调试模式
+        cacheEnabled: true,
+        // ... 其他代理配置
+    }
+};
+                </div>
+                <p><strong>✨ 神奇之处：</strong></p>
+                <ul>
+                    <li>🔄 <strong>自动同步</strong>：所有代理文件自动读取这个配置</li>
+                    <li>🔐 <strong>自动哈希</strong>：系统自动计算密码哈希</li>
+                    <li>📝 <strong>一处修改</strong>：只需要修改这一个文件</li>
+                    <li>🚀 <strong>零维护</strong>：其他文件无需手动修改</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🌐 支持的部署平台</h2>
+            
+            <div class="step">
+                <h3>GitHub Pages</h3>
+                <p>直接推送到 GitHub 仓库，启用 Pages 服务即可。无需额外配置。</p>
+            </div>
+
+            <div class="step">
+                <h3>Netlify</h3>
+                <p>连接 GitHub 仓库，自动部署。使用 <code>simple-proxy.js</code> 作为边缘函数。</p>
+            </div>
+
+            <div class="step">
+                <h3>Vercel</h3>
+                <p>导入 GitHub 仓库，自动部署。代理功能使用 <code>simple-proxy.js</code>。</p>
+            </div>
+
+            <div class="step">
+                <h3>自托管</h3>
+                <p>上传所有文件到 Web 服务器即可。确保服务器支持 JavaScript。</p>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>🔧 快速配置工具</h2>
+            
+            <div class="step">
+                <p>输入您想要设置的密码：</p>
+                <input type="password" id="passwordInput" placeholder="输入新密码" style="padding: 10px; width: 300px; margin: 10px 0;">
+                <br>
+                <button onclick="generateConfig()" class="btn">生成配置</button>
+                <button onclick="copyConfig()" class="btn">复制配置</button>
+            </div>
+            
+            <div id="configOutput" style="display: none;">
+                <h4>生成的配置：</h4>
+                <div class="code-block" id="configText"></div>
+                <div class="warning">
+                    <strong>请复制上述配置到对应的文件中，并删除此配置页面以确保安全。</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>📁 文件说明</h2>
+            <ul>
+                <li><code>config/master-config.js</code> - 🔥 主配置文件（只需修改这个）</li>
+                <li><code>js/auth-config.js</code> - 认证配置（自动从主配置同步）</li>
+                <li><code>simple-proxy.js</code> - 简化代理（自动从主配置同步）</li>
+                <li><code>config/config-loader.mjs</code> - Node.js配置加载器（自动生成）</li>
+                <li><code>index.html</code> - 主页面（已更新）</li>
+                <li><code>player.html</code> - 播放器页面（已更新）</li>
+                <li>其他代理文件 - 全部自动同步</li>
+            </ul>
+        </div>
+
+        <div class="section">
+            <h2>🎯 部署后验证</h2>
+            <ol>
+                <li>访问您的网站</li>
+                <li>应该会提示输入密码</li>
+                <li>输入您设置的密码进行验证</li>
+                <li>测试视频搜索和播放功能</li>
+                <li>确认代理功能正常工作</li>
+            </ol>
+        </div>
+
+        <p style="text-align: center; margin-top: 30px;">
+            <a href="index.html" class="btn">返回主页</a>
+        </p>
+    </div>
+
+    <script>
+        let generatedConfig = '';
+        
+        async function generateConfig() {
+            const password = document.getElementById('passwordInput').value;
+            if (!password) {
+                alert('请输入密码');
+                return;
+            }
+            
+            try {
+                const configText = `
+// config/master-config.js 中的配置（只需修改这一个文件）
+const MASTER_CONFIG = {
+    auth: {
+        username: 'admin',
+        password: '${password}',        // 🔥 只需在这里设置密码
+        enabled: true,
+        sessionDuration: 90 * 24 * 60 * 60 * 1000,
+        maxLoginAttempts: 5,
+        lockoutDuration: 30 * 60 * 1000
+    },
+    proxy: {
+        debug: false,
+        cacheEnabled: true,
+        cacheTTL: 86400,
+        maxRecursion: 5,
+        userAgents: [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ]
+    },
+    ui: {
+        title: 'LibreTV',
+        loginTitle: 'LibreTV 访问验证',
+        loginPrompt: '请输入访问密码'
+    }
+};
+
+🎉 完成！所有其他文件会自动从这个主配置同步！`;
+                
+                generatedConfig = configText;
+                document.getElementById('configText').textContent = configText;
+                document.getElementById('configOutput').style.display = 'block';
+                
+            } catch (error) {
+                alert('生成配置时出错: ' + error.message);
+            }
+        }
+        
+        function copyConfig() {
+            if (!generatedConfig) {
+                alert('请先生成配置');
+                return;
+            }
+            
+            navigator.clipboard.writeText(generatedConfig).then(() => {
+                alert('配置已复制到剪贴板');
+            }).catch(err => {
+                alert('复制失败: ' + err.message);
+            });
+        }
+    </script>
+</body>
+</html>

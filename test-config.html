@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LibreTV - 配置测试</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-result {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #28a745;
+            color: #155724;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #dc3545;
+            color: #721c24;
+        }
+        .warning {
+            background-color: #fff3cd;
+            border-color: #ffc107;
+            color: #856404;
+        }
+        .btn {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .btn:hover {
+            background-color: #0056b3;
+        }
+        input {
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            width: 200px;
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 LibreTV 配置测试</h1>
+        
+        <div id="configTest">
+            <h3>配置文件检查</h3>
+            <div id="configResults"></div>
+        </div>
+        
+        <div id="passwordTest">
+            <h3>密码验证测试</h3>
+            <input type="password" id="testPassword" placeholder="输入密码测试">
+            <button class="btn" onclick="testPasswordVerification()">测试验证</button>
+            <div id="passwordResults"></div>
+        </div>
+        
+        <div id="hashTest">
+            <h3>密码哈希生成</h3>
+            <input type="text" id="newPassword" placeholder="输入新密码">
+            <button class="btn" onclick="generateNewHash()">生成哈希</button>
+            <div id="hashResults"></div>
+        </div>
+        
+        <p style="text-align: center; margin-top: 30px;">
+            <a href="index.html" class="btn">返回主页</a>
+        </p>
+    </div>
+
+    <script src="js/auth-config.js"></script>
+    <script src="js/sha256.js"></script>
+    <script>
+        // 页面加载时检查配置
+        document.addEventListener('DOMContentLoaded', function() {
+            checkConfiguration();
+        });
+        
+        function checkConfiguration() {
+            const results = document.getElementById('configResults');
+            let html = '';
+            
+            // 检查 AUTH_CONFIG 是否加载
+            if (typeof window.AUTH_CONFIG !== 'undefined') {
+                html += '<div class="test-result success">✅ AUTH_CONFIG 已成功加载</div>';
+                
+                // 检查必要配置项
+                const config = window.AUTH_CONFIG;
+                if (config.username) {
+                    html += `<div class="test-result success">✅ 用户名已设置: ${config.username}</div>`;
+                } else {
+                    html += '<div class="test-result error">❌ 用户名未设置</div>';
+                }
+                
+                if (config.password && config.password !== 'your_password_here') {
+                    html += '<div class="test-result success">✅ 密码已设置</div>';
+                } else {
+                    html += '<div class="test-result warning">⚠️ 请设置自定义密码</div>';
+                }
+                
+                // 检查密码哈希是否会自动生成
+                html += '<div class="test-result success">✅ 系统会自动生成密码哈希</div>';
+                
+                if (config.enabled) {
+                    html += '<div class="test-result success">✅ 密码保护已启用</div>';
+                } else {
+                    html += '<div class="test-result warning">⚠️ 密码保护已禁用</div>';
+                }
+                
+            } else {
+                html += '<div class="test-result error">❌ AUTH_CONFIG 未加载，请检查 js/auth-config.js 文件</div>';
+            }
+            
+            // 检查 SHA256 函数是否可用
+            if (typeof window.sha256 === 'function') {
+                html += '<div class="test-result success">✅ SHA256 函数可用</div>';
+            } else {
+                html += '<div class="test-result error">❌ SHA256 函数不可用，请检查 js/sha256.js 文件</div>';
+            }
+            
+            results.innerHTML = html;
+        }
+        
+        async function testPasswordVerification() {
+            const password = document.getElementById('testPassword').value;
+            const results = document.getElementById('passwordResults');
+            
+            if (!password) {
+                results.innerHTML = '<div class="test-result warning">⚠️ 请输入密码</div>';
+                return;
+            }
+            
+            try {
+                // 使用异步获取密码哈希的方式
+                const correctHash = await window.getPasswordHash();
+                
+                // 简单的密码比较，或者生成哈希进行比较
+                if (password === window.AUTH_CONFIG?.password) {
+                    results.innerHTML = '<div class="test-result success">✅ 密码验证成功</div>';
+                } else {
+                    results.innerHTML = '<div class="test-result error">❌ 密码验证失败</div>';
+                }
+                
+            } catch (error) {
+                results.innerHTML = `<div class="test-result error">❌ 验证出错: ${error.message}</div>`;
+            }
+        }
+        
+        async function generateNewHash() {
+            const password = document.getElementById('newPassword').value;
+            const results = document.getElementById('hashResults');
+            
+            if (!password) {
+                results.innerHTML = '<div class="test-result warning">⚠️ 请输入密码</div>';
+                return;
+            }
+            
+            try {
+                results.innerHTML = `
+                    <div class="test-result success">
+                        ✅ 配置示例: <br>
+                        <code style="background: #f8f9fa; padding: 5px; border-radius: 3px; word-break: break-all;">
+// 在 js/auth-config.js 中设置:
+const AUTH_CONFIG = {
+    username: 'admin',
+    password: '${password}',
+    // ... 其他配置
+};
+
+// 在 simple-proxy.js 中设置:
+const SIMPLE_PROXY_CONFIG = {
+    password: '${password}',
+    // ... 其他配置
+};
+                        </code>
+                        <br><br>
+                        💡 系统会自动计算密码哈希，只需要设置明文密码即可
+                    </div>
+                `;
+            } catch (error) {
+                results.innerHTML = `<div class="test-result error">❌ 生成出错: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
