@@ -1,12 +1,6 @@
-// EdgeOne适配版 - functions/proxy/[[path]].js
+// EdgeOne Pages Functions 适配版 - functions/proxy/[[path]].js
 
-// --- EdgeOne环境变量配置适配 ---
-function getEnvVar(key, defaultValue = '') {
-  // 优先从context.env获取，然后从process.env获取
-  return process.env[key] || defaultValue;
-}
-
-// --- 常量 ---
+// --- 常量定义 ---
 const MEDIA_FILE_EXTENSIONS = [
     '.mp4', '.webm', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.f4v', '.m4v', '.3gp', '.3g2', '.ts', '.mts', '.m2ts',
     '.mp3', '.wav', '.ogg', '.aac', '.m4a', '.flac', '.wma', '.alac', '.aiff', '.opus',
@@ -15,24 +9,24 @@ const MEDIA_FILE_EXTENSIONS = [
 const MEDIA_CONTENT_TYPES = ['video/', 'audio/', 'image/'];
 
 /**
- * EdgeOne适配的主要处理函数
+ * EdgeOne Pages Functions 主处理函数
+ * 符合 EdgeOne 标准的函数签名
  */
 export async function onRequest(context) {
-    // EdgeOne的context结构适配
-    const { request } = context;
+    const { request, env, params, waitUntil } = context;
     const url = new URL(request.url);
 
-    // --- EdgeOne环境变量读取适配 ---
-    const DEBUG_ENABLED = (getEnvVar('DEBUG') === 'true');
-    const CACHE_TTL = parseInt(getEnvVar('CACHE_TTL', '86400'));
-    const MAX_RECURSION = parseInt(getEnvVar('MAX_RECURSION', '5'));
+    // --- 从环境变量读取配置 ---
+    const DEBUG_ENABLED = (env.DEBUG === 'true');
+    const CACHE_TTL = parseInt(env.CACHE_TTL || '86400');
+    const MAX_RECURSION = parseInt(env.MAX_RECURSION || '5');
     
     let USER_AGENTS = [
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     ];
     
     try {
-        const agentsJson = getEnvVar('USER_AGENTS_JSON');
+        const agentsJson = env.USER_AGENTS_JSON;
         if (agentsJson) {
             const parsedAgents = JSON.parse(agentsJson);
             if (Array.isArray(parsedAgents) && parsedAgents.length > 0) {
@@ -53,8 +47,17 @@ export async function onRequest(context) {
     }
 
     function getTargetUrlFromPath(pathname) {
-        const encodedUrl = pathname.replace(/^\/proxy\//, '');
+        // EdgeOne 的动态路由参数在 context.params 中
+        // 路径格式: /proxy/path (使用 [[path]].js 捕获所有路径)
+        const pathParam = params.path;
+        if (!pathParam || !Array.isArray(pathParam) || pathParam.length === 0) {
+            return null;
+        }
+        
+        // 重建完整路径
+        const encodedUrl = pathParam.join('/');
         if (!encodedUrl) return null;
+        
         try {
             let decodedUrl = decodeURIComponent(encodedUrl);
             if (!decodedUrl.match(/^https?:\/\//i)) {
@@ -78,13 +81,6 @@ export async function onRequest(context) {
         responseHeaders.set("Access-Control-Allow-Origin", "*");
         responseHeaders.set("Access-Control-Allow-Methods", "GET, HEAD, POST, OPTIONS");
         responseHeaders.set("Access-Control-Allow-Headers", "*");
-
-        if (request.method === "OPTIONS") {
-            return new Response(null, {
-                status: 204,
-                headers: responseHeaders
-            });
-        }
 
         return new Response(body, { status, headers: responseHeaders });
     }
@@ -224,17 +220,42 @@ export async function onRequest(context) {
         return output.join('\n');
     }
 
-    // EdgeOne存储适配 - 由于EdgeOne可能不支持KV，这里简化处理
+    // EdgeOne KV 存储操作
     async function getFromCache(key) {
-        // TODO: 适配EdgeOne的缓存机制
-        // EdgeOne可能使用Redis或其他缓存方案
-        logDebug(`EdgeOne缓存读取: ${key} (暂未实现)`);
-        return null;
+        try {
+            // 使用绑定的 KV 命名空间 - 需要在 EdgeOne 控制台绑定
+            // 假设绑定的变量名为 LIBRETV_CACHE
+            const kvNamespace = env.LIBRETV_CACHE;
+            if (!kvNamespace) {
+                logDebug('KV 命名空间 LIBRETV_CACHE 未绑定');
+                return null;
+            }
+            
+            const cachedData = await kvNamespace.get(key);
+            logDebug(`KV 读取 ${key}: ${cachedData ? '命中' : '未命中'}`);
+            return cachedData;
+        } catch (e) {
+            logDebug(`KV 读取失败 ${key}: ${e.message}`);
+            return null;
+        }
     }
 
     async function setCache(key, value, ttl) {
-        // TODO: 适配EdgeOne的缓存机制
-        logDebug(`EdgeOne缓存写入: ${key} (暂未实现)`);
+        try {
+            const kvNamespace = env.LIBRETV_CACHE;
+            if (!kvNamespace) {
+                logDebug('KV 命名空间 LIBRETV_CACHE 未绑定，跳过缓存写入');
+                return;
+            }
+            
+            // EdgeOne KV put 方法
+            await kvNamespace.put(key, value, { 
+                expirationTtl: ttl 
+            });
+            logDebug(`KV 写入成功: ${key}`);
+        } catch (e) {
+            logDebug(`KV 写入失败 ${key}: ${e.message}`);
+        }
     }
 
     async function processM3u8Content(targetUrl, content, recursionDepth = 0) {
@@ -295,7 +316,7 @@ export async function onRequest(context) {
             return processMediaPlaylist(url, content);
         }
 
-        // 缓存检查 (EdgeOne适配)
+        // 缓存检查
         const cacheKey = `m3u8_processed:${bestVariantUrl}`;
         const cachedContent = await getFromCache(cacheKey);
         if (cachedContent) {
@@ -313,10 +334,16 @@ export async function onRequest(context) {
 
         const processedVariant = await processM3u8Content(bestVariantUrl, variantContent, recursionDepth + 1);
 
-        // 异步缓存写入 (EdgeOne适配)
-        setCache(cacheKey, processedVariant, CACHE_TTL).catch(e => 
-            logDebug(`缓存写入失败: ${e.message}`)
-        );
+        // 使用 waitUntil 异步缓存写入 (EdgeOne 支持)
+        if (waitUntil) {
+            waitUntil(setCache(cacheKey, processedVariant, CACHE_TTL));
+            logDebug(`已安排将处理后的子列表写入缓存: ${bestVariantUrl}`);
+        } else {
+            // 如果没有 waitUntil，直接异步写入
+            setCache(cacheKey, processedVariant, CACHE_TTL).catch(e => 
+                logDebug(`缓存写入失败: ${e.message}`)
+            );
+        }
 
         return processedVariant;
     }
@@ -332,7 +359,7 @@ export async function onRequest(context) {
 
         logDebug(`收到代理请求: ${targetUrl}`);
 
-        // 缓存检查 (EdgeOne适配)
+        // 缓存检查
         const cacheKey = `proxy_raw:${targetUrl}`;
         const cachedDataJson = await getFromCache(cacheKey);
         
@@ -360,14 +387,20 @@ export async function onRequest(context) {
         // 实际请求
         const { content, contentType, responseHeaders } = await fetchContentWithType(targetUrl);
 
-        // 写入缓存 (EdgeOne适配)
+        // 写入缓存
         try {
             const headersToCache = {};
             responseHeaders.forEach((value, key) => { headersToCache[key.toLowerCase()] = value; });
             const cacheValue = { body: content, headers: JSON.stringify(headersToCache) };
-            setCache(cacheKey, JSON.stringify(cacheValue), CACHE_TTL).catch(e => 
-                logDebug(`缓存写入失败: ${e.message}`)
-            );
+            
+            if (waitUntil) {
+                waitUntil(setCache(cacheKey, JSON.stringify(cacheValue), CACHE_TTL));
+                logDebug(`已安排将原始内容写入缓存: ${targetUrl}`);
+            } else {
+                setCache(cacheKey, JSON.stringify(cacheValue), CACHE_TTL).catch(e => 
+                    logDebug(`缓存写入失败: ${e.message}`)
+                );
+            }
         } catch (e) {
             logDebug(`准备缓存数据失败: ${e.message}`);
         }
@@ -393,8 +426,8 @@ export async function onRequest(context) {
     }
 }
 
-// EdgeOne的OPTIONS处理
-export async function onOptions(context) {
+// EdgeOne 的 OPTIONS 处理
+export async function onRequestOptions(context) {
     return new Response(null, {
         status: 204,
         headers: {
@@ -405,6 +438,3 @@ export async function onOptions(context) {
         },
     });
 }
-
-// 如果EdgeOne需要不同的导出方式，可以使用：
-// module.exports = { onRequest, onOptions };
